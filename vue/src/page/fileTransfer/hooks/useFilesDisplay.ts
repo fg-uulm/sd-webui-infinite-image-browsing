@@ -1,6 +1,6 @@
 import { useElementSize } from '@vueuse/core'
 import { ref, computed, watch, reactive } from 'vue'
-import { Top4MediaInfo, batchGetDirTop4MediaInfo } from '@/api'
+import { Top4MediaInfo, batchGetDirTop4MediaInfo, FolderStatsInfo, batchGetFolderStats, clearFolderStatsCache } from '@/api'
 import {
   delay} from 'vue3-ts-util'
 import { sortMethodConv } from '../fileSort'
@@ -30,6 +30,7 @@ export function useFilesDisplay ({ fetchNext }: {fetchNext?: () => Promise<any>}
   const { width } = useElementSize(stackViewEl)
   const gridItems = computed(() => ~~(width.value / gridSize.value))
   const dirCoverCache = reactive(new Map<string, Top4MediaInfo[]>())
+  const dirStatsCache = reactive(new Map<string, FolderStatsInfo>())
 
   const itemSize = computed(() => {
     const second = gridSize.value
@@ -105,10 +106,41 @@ export function useFilesDisplay ({ fetchNext }: {fetchNext?: () => Promise<any>}
         }
       })
     }
+    
+    // Fetch folder statistics
+    const fetchDirStatsPaths = files
+      .filter(v => v.is_under_scanned_path && v.type === 'dir' && !dirStatsCache.has(v.fullpath))
+      .map(v => v.fullpath)
+    if (fetchDirStatsPaths.length) {
+      batchGetFolderStats(fetchDirStatsPaths, 500).then(v => {
+        for (const key in v) {
+          if (Object.prototype.hasOwnProperty.call(v, key)) {
+            dirStatsCache.set(key, v[key])
+          }
+        }
+      })
+    }
   })
 
   state.useEventListen('refresh', async () => {
+    dirCoverCache.clear()
+    dirStatsCache.clear()
+    await clearFolderStatsCache()
     state.eventEmitter.emit('viewableAreaFilesChange')
+  })
+
+  state.useEventListen('invalidateFolderStats', async (folderPath: string) => {
+    // Remove from frontend cache
+    dirStatsCache.delete(folderPath)
+    
+    // Fetch fresh stats for this folder if it's currently visible
+    const visibleDirs = sortedFiles.value.filter(f => f.type === 'dir' && f.fullpath === folderPath)
+    if (visibleDirs.length > 0) {
+      const freshStats = await batchGetFolderStats([folderPath], 500)
+      if (freshStats[folderPath]) {
+        dirStatsCache.set(folderPath, freshStats[folderPath])
+      }
+    }
   })
 
   const onViewableAreaChangeDebounced = debounce(() => state.eventEmitter.emit('viewableAreaFilesChange'), 300)
@@ -132,6 +164,7 @@ export function useFilesDisplay ({ fetchNext }: {fetchNext?: () => Promise<any>}
     canLoadNext,
     itemSize,
     cellWidth,
-    dirCoverCache
+    dirCoverCache,
+    dirStatsCache
   }
 }

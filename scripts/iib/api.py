@@ -8,6 +8,12 @@ import sqlite3
 
 
 from scripts.iib.dir_cover_cache import get_top_4_media_info
+from scripts.iib.folder_stats import (
+    get_cached_or_compute_stats,
+    get_stopwords,
+    save_stopwords,
+    DEFAULT_STOPWORDS
+)
 from scripts.iib.tool import (
     get_created_date_by_stat,
     get_video_type,
@@ -58,7 +64,8 @@ from scripts.iib.db.datamodel import (
     ExtraPath,
     FileInfoDict,
     Cursor, 
-    GlobalSetting
+    GlobalSetting,
+    FolderStats
 )
 from scripts.iib.db.update_image_data import update_image_data, rebuild_image_index, add_image_data_single
 from scripts.iib.logger import logger
@@ -118,6 +125,17 @@ async def verify_secret(request: Request):
 DEFAULT_BASE = "/infinite_image_browsing"
 def infinite_image_browsing_api(app: FastAPI, **kwargs):
     backup_db_file(DataBase.get_db_file_path())
+    
+    # Initialize default stopwords if not set
+    try:
+        conn = DataBase.get_conn()
+        from scripts.iib.folder_stats import STOPWORDS_SETTING_KEY
+        if GlobalSetting.get_setting(conn, STOPWORDS_SETTING_KEY) is None:
+            save_stopwords(conn, DEFAULT_STOPWORDS)
+            logger.info("Initialized default stopwords for folder statistics")
+    except Exception as e:
+        logger.error(f"Failed to initialize default stopwords: {e}")
+    
     api_base = kwargs.get("base") if isinstance(kwargs.get("base"), str) else DEFAULT_BASE
     fe_public_path = kwargs.get("fe_public_path") if isinstance(kwargs.get("fe_public_path"), str) else api_base
     cache_base_dir = get_cache_dir()
@@ -893,6 +911,117 @@ def infinite_image_browsing_api(app: FastAPI, **kwargs):
             res[path] = get_top_4_media_info(path)
         return res
 
+    # Folder Statistics Endpoints
+    stats_api_base = api_base + "/folder_stats"
+
+    class FolderStatsReq(BaseModel):
+        folder_path: str
+        recursive: bool = True
+        force_refresh: bool = False
+        include_metadata: bool = True
+        analysis_limit: Optional[int] = None
+
+    @app.post(stats_api_base, dependencies=[Depends(verify_secret)])
+    async def get_folder_statistics(req: FolderStatsReq):
+        """
+        Get comprehensive statistics for a folder.
+        
+        Args:
+            folder_path: Path to the folder to analyze
+            recursive: Whether to analyze subfolders recursively
+            force_refresh: Force recomputation even if cache is valid
+            include_metadata: Whether to include detailed metadata (models, sizes)
+            analysis_limit: Maximum number of images to analyze for statistics (None = unlimited)
+        
+        Returns:
+            Dictionary with folder statistics
+        """
+        check_path_trust(req.folder_path)
+        
+        try:
+            stats = get_cached_or_compute_stats(
+                folder_path=req.folder_path,
+                recursive=req.recursive,
+                force_refresh=req.force_refresh,
+                include_metadata=req.include_metadata,
+                analysis_limit=req.analysis_limit
+            )
+            return stats
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception as e:
+            logger.error(f"Error getting folder stats for {req.folder_path}: {e}")
+            raise HTTPException(status_code=500, detail="Failed to compute folder statistics")
+
+    @app.post(stats_api_base + "/refresh", dependencies=[Depends(verify_secret)])
+    async def refresh_folder_stats(req: FolderStatsReq):
+        """
+        Force refresh folder statistics (bypass cache).
+        """
+        check_path_trust(req.folder_path)
+        req.force_refresh = True
+        return await get_folder_statistics(req)
+
+    @app.delete(stats_api_base + "/cache", dependencies=[Depends(verify_secret), Depends(write_permission_required)])
+    async def clear_folder_stats_cache(req: PathsReq):
+        """
+        Clear cached statistics for specific folders.
+        """
+        conn = DataBase.get_conn()
+        for path in req.paths:
+            check_path_trust(path)
+            FolderStats.clear_cache(conn, path)
+        return {"cleared": len(req.paths)}
+
+    @app.delete(stats_api_base + "/cache/all", dependencies=[Depends(verify_secret), Depends(write_permission_required)])
+    async def clear_all_folder_stats_cache():
+        """
+        Clear all cached folder statistics.
+        """
+        conn = DataBase.get_conn()
+        FolderStats.clear_all_cache(conn)
+        return {"message": "All folder statistics cache cleared"}
+
+    class StopwordsReq(BaseModel):
+        words: List[str]
+
+    @app.get(stats_api_base + "/stopwords", dependencies=[Depends(verify_secret)])
+    async def get_stopwords_list():
+        """
+        Get current stopwords list for prompt analysis.
+        """
+        conn = DataBase.get_conn()
+        stopwords = list(get_stopwords(conn))
+        return {
+            "stopwords": sorted(stopwords),
+            "count": len(stopwords),
+            "default_count": len(DEFAULT_STOPWORDS)
+        }
+
+    @app.post(stats_api_base + "/stopwords", dependencies=[Depends(verify_secret), Depends(write_permission_required)])
+    async def update_stopwords(req: StopwordsReq):
+        """
+        Update stopwords list for prompt analysis.
+        """
+        conn = DataBase.get_conn()
+        save_stopwords(conn, req.words)
+        return {
+            "message": "Stopwords updated successfully",
+            "count": len(req.words)
+        }
+
+    @app.post(stats_api_base + "/stopwords/reset", dependencies=[Depends(verify_secret), Depends(write_permission_required)])
+    async def reset_stopwords():
+        """
+        Reset stopwords to default English list.
+        """
+        conn = DataBase.get_conn()
+        save_stopwords(conn, DEFAULT_STOPWORDS)
+        return {
+            "message": "Stopwords reset to default",
+            "count": len(DEFAULT_STOPWORDS)
+        }
+
     db_api_base = api_base + "/db"
 
     @app.get(db_api_base + "/basic_info", dependencies=[Depends(verify_secret)])
@@ -1092,6 +1221,12 @@ def infinite_image_browsing_api(app: FastAPI, **kwargs):
         else:
             ImageTag(img.id, req.tag_id).save(conn)
         conn.commit()
+        
+        # Clear folder stats cache for parent folder
+        folder_path = os.path.dirname(path)
+        FolderStats.clear_cache(conn, folder_path)
+        conn.commit()
+        
         return {"is_remove": is_remove}
 
     class BatchUpdateImageReq(BaseModel):
@@ -1135,6 +1270,11 @@ def infinite_image_browsing_api(app: FastAPI, **kwargs):
                     ImageTag(img.id, req.tag_id).save_or_ignore(conn)
                 else:
                     ImageTag.remove(conn, img.id, req.tag_id)
+            
+            # Clear folder stats cache for all affected folders
+            affected_folders = set(os.path.dirname(p) for p in paths)
+            for folder_path in affected_folders:
+                FolderStats.clear_cache(conn, folder_path)
         finally:
             conn.commit()
 

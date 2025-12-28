@@ -79,6 +79,7 @@ class DataBase:
             Image.create_table(conn)
             ExtraPath.create_table(conn)
             DirCoverCache.create_table(conn)
+            FolderStats.create_table(conn)
             GlobalSetting.create_table(conn)
         finally:
             conn.commit()
@@ -867,6 +868,81 @@ class DirCoverCache:
             return json.loads(media_files_json)
         else:
             return []
+
+
+class FolderStats:
+    @classmethod
+    def create_table(cls, conn):
+        with closing(conn.cursor()) as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS folder_stats (
+                    folder_path TEXT PRIMARY KEY,
+                    modified_time TEXT,
+                    stats_json TEXT,
+                    computed_at TEXT
+                )
+            """)
+
+    @classmethod
+    def is_cache_expired(cls, conn, folder_path):
+        """Check if cached stats are expired based on folder modification time"""
+        with closing(conn.cursor()) as cur:
+            cur.execute("SELECT modified_time FROM folder_stats WHERE folder_path = ?", (folder_path,))
+            result = cur.fetchone()
+
+        if not result:
+            return True
+
+        cached_time = result[0]
+        current_modified_time = get_modified_date(folder_path)
+        return cached_time != current_modified_time
+
+    @classmethod
+    def cache_stats(cls, conn, folder_path, stats_dict):
+        """Cache folder statistics"""
+        stats_json = json.dumps(stats_dict, ensure_ascii=False)
+        modified_time = get_modified_date(folder_path)
+        computed_at = datetime.now().isoformat()
+        
+        with closing(conn.cursor()) as cur:
+            cur.execute("""
+                INSERT INTO folder_stats (folder_path, modified_time, stats_json, computed_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(folder_path) DO UPDATE SET 
+                    modified_time = excluded.modified_time, 
+                    stats_json = excluded.stats_json,
+                    computed_at = excluded.computed_at
+            """, (folder_path, modified_time, stats_json, computed_at))
+            conn.commit()
+
+    @classmethod
+    def get_cached_stats(cls, conn, folder_path):
+        """Retrieve cached folder statistics"""
+        with closing(conn.cursor()) as cur:
+            cur.execute("SELECT stats_json, computed_at FROM folder_stats WHERE folder_path = ?", (folder_path,))
+            result = cur.fetchone()
+
+        if result:
+            return {
+                "stats": json.loads(result[0]),
+                "computed_at": result[1]
+            }
+        return None
+
+    @classmethod
+    def clear_cache(cls, conn, folder_path):
+        """Clear cached statistics for a specific folder"""
+        with closing(conn.cursor()) as cur:
+            cur.execute("DELETE FROM folder_stats WHERE folder_path = ?", (folder_path,))
+            conn.commit()
+
+    @classmethod
+    def clear_all_cache(cls, conn):
+        """Clear all cached statistics"""
+        with closing(conn.cursor()) as cur:
+            cur.execute("DELETE FROM folder_stats")
+            conn.commit()
+
         
 # Global settings storage, also use as key-value store
 class GlobalSetting:

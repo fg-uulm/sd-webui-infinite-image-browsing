@@ -140,6 +140,11 @@ export function useFileItemActions (
       const { is_remove } = await toggleCustomTagToImg({ tag_id: tagId, img_path: file.fullpath })
       const tag = global.conf?.all_custom_tags.find((v) => v.id === tagId)?.name!
       await tagStore.refreshTags([file.fullpath])
+      
+      // Invalidate folder stats cache for parent folder
+      const folderPath = Path.dirname(file.fullpath)
+      state.eventEmitter.emit('invalidateFolderStats', folderPath)
+      
       message.success(t(is_remove ? 'removedTagFromImage' : 'addedTagToImage', { tag }))
       return
     } else if (key === 'add-custom-tag') {
@@ -154,6 +159,13 @@ export function useFileItemActions (
         action
       })
       await tagStore.refreshTags(paths)
+      
+      // Invalidate folder stats cache for all affected folders
+      const affectedFolders = new Set(paths.map(p => Path.dirname(p)))
+      affectedFolders.forEach(folder => {
+        state.eventEmitter.emit('invalidateFolderStats', folder)
+      })
+      
       message.success(t(action === 'add' ? 'addCompleted' : 'removeCompleted'))
       return 
     } else if (key.startsWith('copy-to-')){

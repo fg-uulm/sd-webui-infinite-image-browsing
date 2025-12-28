@@ -70,7 +70,8 @@ const {
   canLoadNext,
   onScroll,
   cellWidth,
-  dirCoverCache
+  dirCoverCache,
+  dirStatsCache
 } = useFilesDisplay()
 const { onDrop, onFileDragStart, onFileDragEnd } = useFileTransfer()
 const { onFileItemClick, onContextMenuClick, showGenInfo, imageGenInfo, q } = useFileItemActions({ openNext })
@@ -245,7 +246,8 @@ watch(
               :get-gen-diff="getGenDiff"
               :get-gen-diff-watch-dep="getGenDiffWatchDep"
               :previewing="previewing"
-              :cover-files="dirCoverCache.get(file.fullpath)"/>
+              :cover-files="dirCoverCache.get(file.fullpath)"
+              :folder-stats="dirStatsCache.get(file.fullpath)"/>
           </template>
           <template #after>
             <div style="padding: 16px 0 512px;">

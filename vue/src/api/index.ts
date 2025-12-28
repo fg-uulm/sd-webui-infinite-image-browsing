@@ -166,6 +166,82 @@ export const batchGetDirTop4MediaInfo = async (paths: string[]) => {
   return resp.data as Dict<Top4MediaInfo[]>
 }
 
+export interface FolderStatsInfo {
+  folder_path: string
+  recursive: boolean
+  file_count: number
+  subfolder_count: number
+  total_size_bytes: number
+  media_file_count: number
+  media_stats: {
+    total_images: number
+    total_videos: number
+    indexed_media: number
+    tagged_images: number
+    untagged_images: number
+    analyzed_count: number
+    limit_applied: boolean
+  }
+  top_tags: Array<{
+    tag_id: number
+    tag_name: string
+    tag_type: string
+    display_name: string | null
+    count: number
+    percentage: number
+  }>
+  prompt_analysis: {
+    total_prompts_analyzed: number
+    total_words_found?: number
+    top_words: Array<{
+      word: string
+      count: number
+      percentage: number
+    }>
+  }
+  metadata_summary?: {
+    models: Record<string, number>
+    sizes: Record<string, number>
+  }
+  cache_info: {
+    is_cached: boolean
+    computed_at: string | null
+    cache_valid: boolean
+  }
+  analysis_limit: number | null
+}
+
+export const batchGetFolderStats = async (paths: string[], analysisLimit = 500) => {
+  const results: Dict<FolderStatsInfo> = {}
+  
+  await Promise.all(
+    paths.map(async (path) => {
+      try {
+        const resp = await axiosInst.value.post('/folder_stats', {
+          folder_path: path,
+          recursive: true,
+          force_refresh: false,
+          include_metadata: false,
+          analysis_limit: analysisLimit
+        })
+        results[path] = resp.data
+      } catch (error) {
+        console.error(`Failed to fetch stats for ${path}:`, error)
+      }
+    })
+  )
+  
+  return results
+}
+
+export const clearFolderStatsCache = async () => {
+  try {
+    await axiosInst.value.delete('/folder_stats/cache/all')
+  } catch (error) {
+    console.error('Failed to clear folder stats cache:', error)
+  }
+}
+
 export const setAppFeSetting = async (name: keyof GlobalConf['app_fe_setting'], setting: Record<string, any>) => {
   if (!isSync()) return
   await axiosInst.value.post('/app_fe_setting', { name, value: JSON.stringify(setting) })

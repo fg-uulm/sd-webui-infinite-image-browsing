@@ -15,7 +15,7 @@ import { Tag } from '@/api/db'
 import { openVideoModal, openAudioModal } from './functionalCallableComp'
 import type { GenDiffInfo } from '@/api/files'
 import { play } from '@/icon'
-import { Top4MediaInfo } from '@/api'
+import { Top4MediaInfo, FolderStatsInfo } from '@/api'
 import { watch } from 'vue'
 import { debounce } from 'lodash-es'
 
@@ -39,6 +39,7 @@ const props = withDefaults(
     enableChangeIndicator?: boolean
     extraTags?: Tag[]
     coverFiles?: Top4MediaInfo[]
+    folderStats?: FolderStatsInfo
     getGenDiff?: (ownGenInfo: any, idx: any, increment: any, ownFile: FileNodeInfo) => GenDiffInfo,
     getGenDiffWatchDep?: (idx: number) => any
   }>(),
@@ -92,6 +93,28 @@ const likeTag = computed(() => tags.value.find(v => v.type === 'custom' && v.nam
 const taggleLikeTag = () => {
   ok(likeTag.value)
   emit('contextMenuClick', { key: `toggle-tag-${likeTag.value.id}` } as MenuInfo, props.file, props.idx)
+}
+
+const formatShortDateTime = (dateStr: string) => {
+  // Various input formats to yy-mm-dd hh:mm
+  // "2025-12-28 15:30:45" -> "25-12-28 15:30"
+  // "28.12.2025 15:30:45" -> "25-12-28 15:30"
+  
+  // Try ISO format first (yyyy-mm-dd hh:mm:ss)
+  let match = dateStr.match(/(\d{4})-(\d{2})-(\d{2})\s(\d{2}:\d{2})/)  
+  if (match) {
+    const year = match[1].slice(-2) // Last 2 digits
+    return `${year}-${match[2]}-${match[3]} ${match[4]}`
+  }
+  
+  // Try European format (dd.mm.yyyy hh:mm:ss)
+  match = dateStr.match(/(\d{2})\.(\d{2})\.(\d{4})\s(\d{2}:\d{2})/)
+  if (match) {
+    const year = match[3].slice(-2) // Last 2 digits
+    return `${year}-${match[2]}-${match[1]} ${match[4]}`
+  }
+  
+  return dateStr
 }
 
 const minShowDetailWidth = 160
@@ -232,6 +255,32 @@ const handleAudioClick = () => {
           </div>
 
           <folder-open-outlined class="icon center" v-else />
+          
+          <!-- Folder Stats Overlay - only show if we have tags or words -->
+          <div v-if="file.type === 'dir' && folderStats && (folderStats.top_tags?.length || folderStats.prompt_analysis?.top_words?.length)" 
+               class="folder-stats-overlay">
+            <div class="stats-section" v-if="folderStats.top_tags?.length">
+              <div class="stats-title">🏷️ Top Tags</div>
+              <div class="stats-items">
+                <span v-for="tag in folderStats.top_tags.slice(0, 3)" 
+                      :key="tag.tag_name" 
+                      class="stats-tag">
+                  {{ tag.tag_name }} <small>({{ tag.count }})</small>
+                </span>
+              </div>
+            </div>
+            
+            <div class="stats-section" v-if="folderStats.prompt_analysis?.top_words?.length">
+              <div class="stats-title">📝 Top Words</div>
+              <div class="stats-items">
+                <span v-for="word in folderStats.prompt_analysis.top_words.slice(0, 3)" 
+                      :key="word.word" 
+                      class="stats-word">
+                  {{ word.word }} <small>({{ word.count }})</small>
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
         <div class="profile" v-if="cellWidth > minShowDetailWidth">
           <div class="name line-clamp-1" :title="file.name">
@@ -239,10 +288,41 @@ const handleAudioClick = () => {
           </div>
           <div class="basic-info">
             <div style="margin-right: 4px;">
-              {{ file.type }} {{ file.size }}
+              <!-- For folders: Compact statistics -->
+              <template v-if="file.type === 'dir' && folderStats">
+                <!-- 📄{{ folderStats.file_count }} -->
+                <!-- Use media_file_count for total media, or fallback to indexed stats -->
+                <template v-if="folderStats.media_file_count > 0">
+                  🖼️{{ folderStats.media_file_count }}
+                </template>
+                <template v-else-if="folderStats.media_stats.indexed_media > 0">
+                  🖼️{{ folderStats.media_stats.indexed_media }}
+                </template>
+                <!-- Show tagged count if we have indexed images -->
+                <template v-if="folderStats.media_stats.indexed_media > 0 && folderStats.media_stats.tagged_images > 0">
+                  🏷️{{ folderStats.media_stats.tagged_images }}
+                </template>
+                <template v-if="folderStats.subfolder_count > 0">
+                  📁{{ folderStats.subfolder_count }}
+                </template>
+              </template>
+              <!-- For folders without stats -->
+              <template v-else-if="file.type === 'dir' && !folderStats">
+                {{ file.type }} {{ file.size }}
+              </template>
+              <!-- For files -->
+              <template v-else>
+                {{ file.type }} {{ file.size }}
+              </template>
             </div>
             <div>
-              {{ file.date }}
+              <!-- Date/Time in short form for folders -->
+              <template v-if="file.type === 'dir'">
+                {{ formatShortDateTime(file.date) }}
+              </template>
+              <template v-else>
+                {{ file.date }}
+              </template>
             </div>
           </div>
         </div>
@@ -404,9 +484,17 @@ const handleAudioClick = () => {
           flex-direction: row;
           margin: 0;
           font-size: 0.7em;
+          line-height: 1.4;
+          
           * {
             white-space: nowrap;
             overflow: hidden;
+          }
+          
+          > div:first-child {
+            display: flex;
+            gap: 3px;
+            align-items: center;
           }
         }
       }
@@ -466,5 +554,64 @@ const handleAudioClick = () => {
       overflow: hidden
     }
   }
+}
+
+.folder-stats-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(4px);
+  opacity: 0;
+  transition: opacity 0.2s ease 0.1s;
+  padding: 16px;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  pointer-events: none;
+  z-index: 50;
+  
+  .stats-section {
+    .stats-title {
+      font-size: 0.9em;
+      font-weight: 600;
+      margin-bottom: 6px;
+      color: #fff;
+    }
+    
+    .stats-items {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      
+      span {
+        background: var(--zp-primary-background);
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 0.85em;
+        color: var(--zp-primary);
+        
+        small {
+          opacity: 0.7;
+          margin-left: 4px;
+        }
+      }
+      
+      .stats-tag {
+        border: 1px solid var(--zp-secondary);
+      }
+      
+      .stats-word {
+        border: 1px solid var(--zp-border);
+      }
+    }
+  }
+}
+
+.preview-icon-wrap:hover .folder-stats-overlay {
+  opacity: 1;
 }
 </style>
