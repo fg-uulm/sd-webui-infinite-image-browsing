@@ -42,7 +42,7 @@ const compCnMap: Partial<Record<TabPane['type'], string>> = {
   'fuzzy-search': t('fuzzy-search'),
   'batch-download': t('batchDownload') + ' / ' + t('archive'),
   'workspace-snapshot': t('WorkspaceSnapshot'),
-  
+  'analytics': t('analytics'),
   'global-setting': t('globalSettings'),
 }
 type FileTransModeIn = 'preset' | ExtraPathType
@@ -58,6 +58,7 @@ const createPane = (type: TabPane['type'], path?: string, mode?: FileTransModeIn
     case 'batch-download':
     case 'workspace-snapshot':
     case 'fuzzy-search':
+    case 'analytics':
     case 'empty':
       pane = { type, name: compCnMap[type]!, key: Date.now() + uniqueId() }
       break
@@ -270,6 +271,9 @@ const modes = computed(() => {
           </li>
           <li class="item" @click="imgsli.opened = true">
             <span class="text line-clamp-1">{{ $t('imgCompare') }}</span>
+          </li>
+          <li class="item" @click="openInCurrentTab('analytics')">
+            <span class="text line-clamp-1">{{ $t('analytics') }}</span>
           </li>
           <li class="item" v-if="canpreviewInNewWindow" @click="previewInNewWindow">
             <span class="text line-clamp-1">{{ $t('openThisAppInNewWindow') }}</span>

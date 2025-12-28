@@ -294,5 +294,7 @@ export const zhHans = {
   confirmRebuildImageIndex: '确认重建图像索引？',
   rebuildComplete: '重新构建完成',
   rebuildImageIndex: '重新构建图像索引',
-  tagSearchNoResultsMessage: '看起来没匹配到任何结果，尝试通过重新构建索引来去掉无用的tag？'
+  tagSearchNoResultsMessage: '看起来没匹配到任何结果，尝试通过重新构建索引来去掉无用的tag？',
+  analytics: 'Analytics',
+  analyticsDesc: 'Using builtin analytics can help to find effective, frequently used prompt parts and help to improve your generations',
 }

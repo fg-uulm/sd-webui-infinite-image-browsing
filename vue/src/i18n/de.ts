@@ -126,4 +126,6 @@ export const de: Partial<IIBI18nMap> = {
   imgSearch: 'Bildsuche',
   send2savedDir: 'In den gespeicherten Ordner senden',
   promptcompare: 'Prompts vergleichen',
+  analytics: 'Analytik',
+  analyticsDesc: 'Using builtin analytics can help to find effective, frequently used prompt parts and help to improve your generations',
 }

@@ -315,5 +315,7 @@ You can specify which snapshot to restore to when starting IIB in the global set
   confirmRebuildImageIndex: 'Confirm rebuilding image index?',
   rebuildComplete: 'Rebuild complete',
   tagSearchNoResultsMessage:
-    'It seems like no results were found. Try rebuilding the index to remove unused tags?'
+    'It seems like no results were found. Try rebuilding the index to remove unused tags?',
+  analytics: 'Analytik',
+  analyticsDesc: 'Using builtin analytics can help to find effective, frequently used prompt parts and help to improve your generations',
 }
