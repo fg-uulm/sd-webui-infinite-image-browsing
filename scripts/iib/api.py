@@ -126,6 +126,14 @@ DEFAULT_BASE = "/infinite_image_browsing"
 def infinite_image_browsing_api(app: FastAPI, **kwargs):
     backup_db_file(DataBase.get_db_file_path())
     
+    # Initialize background worker for folder statistics
+    try:
+        from scripts.iib.folder_stats_bg import init_background_worker
+        init_background_worker(max_workers=4)
+        logger.info("Folder statistics background worker initialized")
+    except Exception as e:
+        logger.error(f"Failed to initialize folder stats background worker: {e}")
+    
     # Initialize default stopwords if not set
     try:
         conn = DataBase.get_conn()
@@ -925,6 +933,7 @@ def infinite_image_browsing_api(app: FastAPI, **kwargs):
     async def get_folder_statistics(req: FolderStatsReq):
         """
         Get comprehensive statistics for a folder.
+        Returns cached data if available, otherwise submits background job and returns partial stats.
         
         Args:
             folder_path: Path to the folder to analyze
@@ -934,19 +943,71 @@ def infinite_image_browsing_api(app: FastAPI, **kwargs):
             analysis_limit: Maximum number of images to analyze for statistics (None = unlimited)
         
         Returns:
-            Dictionary with folder statistics
+            Dictionary with folder statistics (may be partial if computing in background)
         """
         check_path_trust(req.folder_path)
         
         try:
-            stats = get_cached_or_compute_stats(
-                folder_path=req.folder_path,
+            from scripts.iib.folder_stats_bg import submit_folder_for_processing, is_job_pending
+            
+            conn = DataBase.get_conn()
+            folder_path = os.path.normpath(req.folder_path)
+            
+            # Check if cache exists and is valid
+            if not req.force_refresh and not FolderStats.is_cache_expired(conn, folder_path):
+                # Return cached stats
+                cached = FolderStats.get_cached_stats(conn, folder_path)
+                if cached:
+                    return cached
+            
+            # Check if job is already running
+            if is_job_pending(folder_path):
+                # Return partial stats (file counts only) with computing flag
+                from scripts.iib.folder_stats import get_file_and_folder_counts
+                counts = get_file_and_folder_counts(folder_path, req.recursive)
+                return {
+                    **counts,
+                    "folder_path": folder_path,
+                    "recursive": req.recursive,
+                    "media_stats": {"computing": True},
+                    "top_tags": [],
+                    "prompt_analysis": {"computing": True},
+                    "metadata_summary": {},
+                    "analysis_limit": req.analysis_limit,
+                    "cache_info": {
+                        "is_cached": False,
+                        "computing": True,
+                        "cache_valid": False
+                    }
+                }
+            
+            # Submit background job
+            submit_folder_for_processing(
+                folder_path=folder_path,
                 recursive=req.recursive,
-                force_refresh=req.force_refresh,
-                include_metadata=req.include_metadata,
-                analysis_limit=req.analysis_limit
+                analysis_limit=req.analysis_limit or 500,
+                force=req.force_refresh
             )
-            return stats
+            
+            # Return partial stats immediately
+            from scripts.iib.folder_stats import get_file_and_folder_counts
+            counts = get_file_and_folder_counts(folder_path, req.recursive)
+            return {
+                **counts,
+                "folder_path": folder_path,
+                "recursive": req.recursive,
+                "media_stats": {"computing": True},
+                "top_tags": [],
+                "prompt_analysis": {"computing": True},
+                "metadata_summary": {},
+                "analysis_limit": req.analysis_limit,
+                "cache_info": {
+                    "is_cached": False,
+                    "computing": True,
+                    "cache_valid": False
+                }
+            }
+            
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
         except Exception as e:
