@@ -953,15 +953,19 @@ def infinite_image_browsing_api(app: FastAPI, **kwargs):
             conn = DataBase.get_conn()
             folder_path = os.path.normpath(req.folder_path)
             
+            logger.debug(f"[FOLDER_STATS_API] Request for: {folder_path} (force={req.force_refresh})")
+            
             # Check if cache exists and is valid
             if not req.force_refresh and not FolderStats.is_cache_expired(conn, folder_path):
                 # Return cached stats
                 cached = FolderStats.get_cached_stats(conn, folder_path)
                 if cached:
+                    logger.debug(f"[FOLDER_STATS_API] ✓ Returning cached stats: {folder_path}")
                     return cached
             
             # Check if job is already running
             if is_job_pending(folder_path):
+                logger.debug(f"[FOLDER_STATS_API] ⏳ Job pending, returning partial stats: {folder_path}")
                 # Return partial stats (file counts only) with computing flag
                 from scripts.iib.folder_stats import get_file_and_folder_counts
                 counts = get_file_and_folder_counts(folder_path, req.recursive)
@@ -982,14 +986,19 @@ def infinite_image_browsing_api(app: FastAPI, **kwargs):
                 }
             
             # Submit background job
-            submit_folder_for_processing(
+            logger.info(f"[FOLDER_STATS_API] → Submitting background job: {folder_path}")
+            submitted = submit_folder_for_processing(
                 folder_path=folder_path,
                 recursive=req.recursive,
                 analysis_limit=req.analysis_limit or 500,
                 force=req.force_refresh
             )
             
+            if not submitted:
+                logger.warning(f"[FOLDER_STATS_API] ⚠ Job not submitted (already queued?): {folder_path}")
+            
             # Return partial stats immediately
+            logger.debug(f"[FOLDER_STATS_API] ⏳ Returning partial stats while computing: {folder_path}")
             from scripts.iib.folder_stats import get_file_and_folder_counts
             counts = get_file_and_folder_counts(folder_path, req.recursive)
             return {
@@ -1011,7 +1020,7 @@ def infinite_image_browsing_api(app: FastAPI, **kwargs):
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
         except Exception as e:
-            logger.error(f"Error getting folder stats for {req.folder_path}: {e}")
+            logger.error(f"[FOLDER_STATS_API] ✗ Error getting folder stats for {req.folder_path}: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail="Failed to compute folder statistics")
 
     @app.post(stats_api_base + "/refresh", dependencies=[Depends(verify_secret)])

@@ -25,7 +25,9 @@ def init_background_worker(max_workers: int = 4):
     if not _initialized:
         _executor = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="folder-stats-")
         _initialized = True
-        logger.info(f"Folder stats background worker initialized with {max_workers} workers")
+        logger.info(f"[FOLDER_STATS_BG] Background worker initialized with {max_workers} workers")
+    else:
+        logger.debug(f"[FOLDER_STATS_BG] Background worker already initialized")
 
 
 def shutdown_background_worker():
@@ -50,7 +52,7 @@ def _compute_stats_task(folder_path: str, recursive: bool = True, analysis_limit
     folder_path = os.path.normpath(folder_path)
     
     try:
-        logger.info(f"Computing folder stats in background: {folder_path}")
+        logger.info(f"[FOLDER_STATS_BG] Starting computation for: {folder_path} (recursive={recursive}, limit={analysis_limit})")
         start_time = time.time()
         
         # Compute and cache the stats
@@ -68,17 +70,18 @@ def _compute_stats_task(folder_path: str, recursive: bool = True, analysis_limit
         conn.commit()
         
         elapsed = time.time() - start_time
-        logger.info(f"Folder stats computed in {elapsed:.2f}s: {folder_path} "
+        logger.info(f"[FOLDER_STATS_BG] ✓ Completed in {elapsed:.2f}s: {folder_path} "
                    f"({stats.get('media_file_count', 0)} media files, "
                    f"{len(stats.get('top_tags', []))} tags, "
                    f"{len(stats.get('prompt_analysis', {}).get('top_words', []))} words)")
         
     except Exception as e:
-        logger.error(f"Error computing folder stats for {folder_path}: {e}", exc_info=True)
+        logger.error(f"[FOLDER_STATS_BG] ✗ Error computing stats for {folder_path}: {e}", exc_info=True)
     finally:
         # Remove from pending jobs
         with _jobs_lock:
             _pending_jobs.discard(folder_path)
+            logger.debug(f"[FOLDER_STATS_BG] Job removed from pending queue: {folder_path} (remaining: {len(_pending_jobs)})")
 
 
 def submit_folder_for_processing(folder_path: str, recursive: bool = True, 
@@ -102,6 +105,7 @@ def submit_folder_for_processing(folder_path: str, recursive: bool = True,
     
     # Check if already pending
     if is_job_pending(folder_path):
+        logger.debug(f"[FOLDER_STATS_BG] Job already pending: {folder_path}")
         return False
     
     # Check if cache exists and is valid (unless force=True)
@@ -109,15 +113,18 @@ def submit_folder_for_processing(folder_path: str, recursive: bool = True,
         conn = DataBase.get_conn()
         from scripts.iib.db.datamodel import FolderStats
         if not FolderStats.is_cache_expired(conn, folder_path):
+            logger.debug(f"[FOLDER_STATS_BG] Cache valid, skipping: {folder_path}")
             return False
     
     # Add to pending jobs
     with _jobs_lock:
         if folder_path in _pending_jobs:
+            logger.debug(f"[FOLDER_STATS_BG] Job already in pending set: {folder_path}")
             return False
         _pending_jobs.add(folder_path)
     
     # Submit the job
+    logger.info(f"[FOLDER_STATS_BG] → Submitting job: {folder_path} (pending jobs: {len(_pending_jobs)})")
     _executor.submit(_compute_stats_task, folder_path, recursive, analysis_limit)
     return True
 
