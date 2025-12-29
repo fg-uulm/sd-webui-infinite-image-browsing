@@ -224,7 +224,8 @@ export const batchGetFolderStats = async (paths: string[], analysisLimit = 500) 
           include_metadata: false,
           analysis_limit: analysisLimit
         })
-        results[path] = resp.data
+        // Backend returns {stats: {...}, computed_at: ...}
+        results[path] = resp.data.stats
       } catch (error) {
         console.error(`Failed to fetch stats for ${path}:`, error)
       }

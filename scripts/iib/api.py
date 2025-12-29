@@ -978,14 +978,16 @@ def infinite_image_browsing_api(app: FastAPI, **kwargs):
                 from scripts.iib.folder_stats import get_file_and_folder_counts
                 counts = get_file_and_folder_counts(folder_path, req.recursive)
                 return {
-                    **counts,
-                    "folder_path": folder_path,
-                    "recursive": req.recursive,
-                    "media_stats": {"computing": True},
-                    "top_tags": [],
-                    "prompt_analysis": {"computing": True},
-                    "metadata_summary": {},
-                    "analysis_limit": req.analysis_limit,
+                    "stats": {
+                        **counts,
+                        "folder_path": folder_path,
+                        "recursive": req.recursive,
+                        "media_stats": {"computing": True},
+                        "top_tags": [],
+                        "prompt_analysis": {"computing": True},
+                        "metadata_summary": {},
+                        "analysis_limit": req.analysis_limit,
+                    },
                     "cache_info": {
                         "is_cached": False,
                         "computing": True,
@@ -1010,14 +1012,16 @@ def infinite_image_browsing_api(app: FastAPI, **kwargs):
             from scripts.iib.folder_stats import get_file_and_folder_counts
             counts = get_file_and_folder_counts(folder_path, req.recursive)
             return {
-                **counts,
-                "folder_path": folder_path,
-                "recursive": req.recursive,
-                "media_stats": {"computing": True},
-                "top_tags": [],
-                "prompt_analysis": {"computing": True},
-                "metadata_summary": {},
-                "analysis_limit": req.analysis_limit,
+                "stats": {
+                    **counts,
+                    "folder_path": folder_path,
+                    "recursive": req.recursive,
+                    "media_stats": {"computing": True},
+                    "top_tags": [],
+                    "prompt_analysis": {"computing": True},
+                    "metadata_summary": {},
+                    "analysis_limit": req.analysis_limit,
+                },
                 "cache_info": {
                     "is_cached": False,
                     "computing": True,
