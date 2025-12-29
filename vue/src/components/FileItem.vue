@@ -295,11 +295,11 @@ const handleAudioClick = () => {
                 <template v-if="folderStats.media_file_count > 0">
                   🖼️{{ folderStats.media_file_count }}
                 </template>
-                <template v-else-if="folderStats.media_stats.indexed_media > 0">
+                <template v-else-if="folderStats.media_stats?.indexed_media > 0">
                   🖼️{{ folderStats.media_stats.indexed_media }}
                 </template>
                 <!-- Show tagged count if we have indexed images -->
-                <template v-if="folderStats.media_stats.indexed_media > 0 && folderStats.media_stats.tagged_images > 0">
+                <template v-if="folderStats.media_stats?.indexed_media > 0 && folderStats.media_stats?.tagged_images > 0">
                   🏷️{{ folderStats.media_stats.tagged_images }}
                 </template>
                 <template v-if="folderStats.subfolder_count > 0">
