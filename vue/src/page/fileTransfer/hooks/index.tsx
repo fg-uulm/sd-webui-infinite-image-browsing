@@ -129,6 +129,7 @@ export const { useHookShareState } = createTypedShareStateHook(
       refresh (): Promise<void>
       selectAll (): void
       viewableAreaFilesChange(): void
+      invalidateFolderStats(folderPath: string): void
     }>()
     events.useEventListen('selectAll', () => {
       console.log(`select all 0 -> ${sortedFiles.value.length}`)

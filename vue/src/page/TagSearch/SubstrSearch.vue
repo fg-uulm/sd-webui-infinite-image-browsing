@@ -218,7 +218,7 @@ const { onClearAllSelected, onSelectAll, onReverseSelect } = useKeepMultiSelect(
                               white-space: pre-line;
                               max-height: 70vh;
                               overflow: auto;
-                            " @dblclick="copy2clipboardI18n(imageGenInfo)">
+                            "                 @dblclick="copy2clipboardI18n(imageGenInfo ?? '')">
             <div class="hint">{{ $t('doubleClickToCopy') }}</div>
             {{ imageGenInfo }}
           </div>

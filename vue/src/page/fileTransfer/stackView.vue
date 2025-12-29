@@ -121,7 +121,7 @@ watch(
                 max-height: 70vh;
                 overflow: auto;
                 z-index: 9999;
-              " @dblclick="copy2clipboardI18n(imageGenInfo)">
+              " @dblclick="copy2clipboardI18n(imageGenInfo ?? '')">
             <div class="hint">{{ $t('doubleClickToCopy') }}</div>
             {{ imageGenInfo }}
           </div>

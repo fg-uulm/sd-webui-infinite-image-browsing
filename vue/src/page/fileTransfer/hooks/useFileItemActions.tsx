@@ -12,6 +12,7 @@ import {
 import { type FileNodeInfo, deleteFiles, moveFiles, copyFiles } from '@/api/files'
 import { last, range, uniqueId } from 'lodash-es'
 import * as Path from '@/util/path'
+import { getParentDirectory } from '@/util/path'
 import { Checkbox, Modal, message } from 'ant-design-vue'
 import type { MenuInfo } from 'ant-design-vue/lib/menu/src/interface'
 import { t } from '@/i18n'
@@ -28,7 +29,7 @@ export function useFileItemActions (
   { openNext }: { openNext: (file: FileNodeInfo) => Promise<void> }
 ) {
   const showGenInfo = ref(false)
-  const imageGenInfo = ref('')
+  const imageGenInfo = ref<string>()
   const {
     sortedFiles,
     previewIdx,
@@ -142,8 +143,8 @@ export function useFileItemActions (
       await tagStore.refreshTags([file.fullpath])
       
       // Invalidate folder stats cache for parent folder
-      const folderPath = Path.dirname(file.fullpath)
-      state.eventEmitter.emit('invalidateFolderStats', folderPath)
+      const folderPath = getParentDirectory(file.fullpath)
+      eventEmitter.value.emit('invalidateFolderStats', folderPath)
       
       message.success(t(is_remove ? 'removedTagFromImage' : 'addedTagToImage', { tag }))
       return
@@ -161,9 +162,9 @@ export function useFileItemActions (
       await tagStore.refreshTags(paths)
       
       // Invalidate folder stats cache for all affected folders
-      const affectedFolders = new Set(paths.map(p => Path.dirname(p)))
+      const affectedFolders = new Set(paths.map(p => getParentDirectory(p)))
       affectedFolders.forEach(folder => {
-        state.eventEmitter.emit('invalidateFolderStats', folder)
+        eventEmitter.value.emit('invalidateFolderStats', folder)
       })
       
       message.success(t(action === 'add' ? 'addCompleted' : 'removeCompleted'))
