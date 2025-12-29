@@ -69,6 +69,14 @@ from scripts.iib.db.datamodel import (
 )
 from scripts.iib.db.update_image_data import update_image_data, rebuild_image_index, add_image_data_single
 from scripts.iib.logger import logger
+
+# TEMPORARY: Force all logs to console for debugging
+import logging
+for handler in logger.handlers:
+    if isinstance(handler, logging.StreamHandler):
+        handler.setLevel(logging.DEBUG)
+logger.info("[DEBUG] Temporary console logging enabled for folder stats debugging")
+
 from scripts.iib.seq import seq
 import urllib.parse
 from scripts.iib.fastapi_video import range_requests_response, close_video_file_reader
